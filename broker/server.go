@@ -2,6 +2,7 @@ package broker
 
 import (
     "bufio"
+    "encoding/json"
     "fmt"
     "net"
     "os"
@@ -25,10 +26,11 @@ func InitServer() {
     }
     defer server.Close()
 
-    // messageChannel := make(chan Message)
+    mapChanConnection := map[string] net.Conn{}
+    messageChannel := make(chan string)
 
     // can handle push or send event to a worker
-    // go handleMessage(messageChannel)
+    go handleMessage(messageChannel, mapChanConnection)
 
 
     // Client connection
@@ -36,14 +38,42 @@ func InitServer() {
     for {
         client, err := server.Accept()
         if err != nil {
-            fmt.Println(err)
+            fmt.Println(err.Error())
             return
         }
-        go handleConnection(client)
+        go handleConnection(messageChannel, client, mapChanConnection)
     }
 }
 
-func handleConnection(client net.Conn) {
+func handleMessage(messageChannel chan string, mapChanConnection map[string] net.Conn) {
+    for {
+        select {
+        case message := <- messageChannel:
+            // The message is a json with channel and message value
+            mapMessage := map[string] string{}
+            err := json.Unmarshal([]byte(message), &mapMessage)
+            if err != nil {
+                fmt.Println("Error decoding json message " + message + " err: " + err.Error())
+                break
+            }
+            chanToSearchWorker := mapMessage["chan"]
+            messageValue := mapMessage["value"]
+
+            // TODO get one not only first
+            if _, ok := mapChanConnection[chanToSearchWorker]; ok {
+                jsonValue, err := json.Marshal(messageValue + "\n")
+                if err != nil {
+                    fmt.Println("Error when encode json for message value " + messageValue)
+                    break
+                }
+                fmt.Println("Send to client message" + messageValue)
+                mapChanConnection[chanToSearchWorker].Write(jsonValue)
+            }
+        }
+    }
+}
+
+func handleConnection(messageChan chan string, client net.Conn, mapChanConnection map[string] net.Conn) {
     defer client.Close()
 
     fmt.Printf("Serving %s\n", client.RemoteAddr().String())
@@ -56,12 +86,15 @@ func handleConnection(client net.Conn) {
         }
 
         commandString := strings.TrimSpace(netData)
-        parts := strings.Split(commandString, " ")
-        command := parts[0]
-        switch command {
-        case "POST":
-            fmt.Println("OK POST")
+        if strings.Contains(commandString, "CONNECT:") {
+            channelToConnect := strings.Replace(commandString, "CONNECT:", "", 1)
+            if (len(channelToConnect) > 0) {
+                mapChanConnection[channelToConnect] = client
+                fmt.Println("Add client to chan " + channelToConnect)
+            }
+        } else if strings.Contains(commandString, "SEND:") {
+            messageToSend := strings.Replace(commandString, "SEND:", "", 1)
+            messageChan <- messageToSend
         }
-        client.Write([]byte(command + "\n"))
     }
 }
