@@ -61,13 +61,8 @@ func handleMessage(messageChannel chan string, mapChanConnection map[string] net
 
             // TODO get one not only first
             if _, ok := mapChanConnection[chanToSearchWorker]; ok {
-                jsonValue, err := json.Marshal(messageValue + "\n")
-                if err != nil {
-                    fmt.Println("Error when encode json for message value " + messageValue)
-                    break
-                }
                 fmt.Println("Send to client message" + messageValue)
-                mapChanConnection[chanToSearchWorker].Write(jsonValue)
+                mapChanConnection[chanToSearchWorker].Write([]byte(messageValue + "\n"))
             }
         }
     }

@@ -13,5 +13,6 @@ if (!$fp) {
     $message = json_encode($message);
     echo "Push message $message in port $port and in channel $channel";
     fwrite($fp, "SEND:$message " . PHP_EOL);
+
     fclose($fp);
 }
